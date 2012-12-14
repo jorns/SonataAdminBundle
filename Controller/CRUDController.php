@@ -31,6 +31,11 @@ class CRUDController extends Controller
     protected $admin;
 
     /**
+     * @var
+     */
+    protected $request;
+
+    /**
      * @param mixed   $data
      * @param integer $status
      * @param array   $headers
@@ -73,6 +78,11 @@ class CRUDController extends Controller
         $this->configure();
     }
 
+    public function setRequest(Request $request)
+    {
+        $this->request = $request;
+    }
+
     /**
      * Contextualize the admin class depends on the current request
      *
@@ -81,13 +91,20 @@ class CRUDController extends Controller
      */
     public function configure()
     {
-        $adminCode = $this->container->get('request')->get('_sonata_admin');
+        $request = $this->getRequest();
+        $adminCode = $request->get('_sonata_admin');
 
         if (!$adminCode) {
-            throw new \RuntimeException(sprintf('There is no `_sonata_admin` defined for the controller `%s` and the current route `%s`', get_class($this), $this->container->get('request')->get('_route')));
+            throw new \RuntimeException(sprintf('There is no `_sonata_admin` defined for the controller `%s` and the current route `%s`', get_class($this), $request->get('_route')));
         }
 
-        $this->admin = $this->container->get('sonata.admin.pool')->getAdminByAdminCode($adminCode);
+        if ($adminCode instanceof \Sonata\AdminBundle\Admin\Admin)
+        {
+            $this->admin = $adminCode;
+        } else {
+            $this->admin = $this->container->get('sonata.admin.pool')->getAdminByAdminCode($adminCode);
+        }
+
 
         if (!$this->admin) {
             throw new \RuntimeException(sprintf('Unable to find the admin class related to the current controller (%s)', get_class($this)));
@@ -100,13 +117,16 @@ class CRUDController extends Controller
             $rootAdmin = $rootAdmin->getParent();
         }
 
-        $request = $this->container->get('request');
-
         $rootAdmin->setRequest($request);
 
         if ($request->get('uniqid')) {
             $this->admin->setUniqid($request->get('uniqid'));
         }
+    }
+
+    public function getRequest()
+    {
+        return $this->request ? : $this->container->get('request');
     }
 
     /**
@@ -162,6 +182,33 @@ class CRUDController extends Controller
             'action'   => 'list',
             'form'     => $formView,
             'datagrid' => $datagrid
+        ));
+    }
+
+    /**
+     * return the Response object associated to the list action
+     *
+     * @throws \Symfony\Component\Security\Core\Exception\AccessDeniedException
+     *
+     * @return Response
+     */
+    public function relatedListAction()
+    {
+        if (false === $this->admin->isGranted('LIST')) {
+            throw new AccessDeniedException();
+        }
+
+        $datagrid = $this->admin->getDatagrid();
+        $formView = $datagrid->getForm()->createView();
+
+        // set the theme for the current Admin Form
+        $this->get('twig')->getExtension('form')->renderer->setTheme($formView, $this->admin->getFilterTheme());
+
+        return $this->render($this->admin->getTemplate('related_list'), array(
+            'action'   => 'list',
+            'form'     => $formView,
+            'datagrid' => $datagrid,
+            'batchactions' => array()
         ));
     }
 
@@ -300,7 +347,7 @@ class CRUDController extends Controller
         return $this->render($this->admin->getTemplate($templateKey), array(
             'action' => 'edit',
             'form'   => $view,
-            'object' => $object,
+            'object' => $object
         ));
     }
 

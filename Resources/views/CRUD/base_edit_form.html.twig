@@ -72,6 +72,13 @@
                 </div>
             {% endblock formactions %}
         </form>
+
+        {% for list in admin.getRelatedLists %}
+            <fieldset>
+                <legend>{{ list.name }}</legend>
+                {{ list.content|raw }}
+            </fieldset>
+        {% endfor %}
     {% endif%}
 
 {% endblock %}

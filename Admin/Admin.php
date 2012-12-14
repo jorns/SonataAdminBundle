@@ -19,11 +19,13 @@ use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Translation\TranslatorInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Security\Acl\Model\DomainObjectInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 use Sonata\AdminBundle\Form\FormMapper;
 use Sonata\AdminBundle\Datagrid\ListMapper;
 use Sonata\AdminBundle\Datagrid\DatagridMapper;
 use Sonata\AdminBundle\Show\ShowMapper;
+use Sonata\AdminBundle\Lists\RelatedListMapper;
 
 use Sonata\AdminBundle\Admin\Pool;
 use Sonata\AdminBundle\Validator\ErrorElement;
@@ -415,6 +417,48 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
     protected $securityInformation = array();
 
     /**
+     * @var \Symfony\Component\DependencyInjection\ContainerInterface
+     */
+    protected $serviceContainer;
+
+    protected $relatedListMapper;
+
+    public function getRelatedLists()
+    {
+        if ($this->relatedListMapper === null)
+        {
+            $this->relatedListMapper = new RelatedListMapper();
+            $this->configureRelatedLists($this->relatedListMapper);
+        }
+
+        return $this->relatedListMapper->getAll();
+    }
+
+    public function getRelatedListsContent()
+    {
+        $lists = array();
+        foreach ($this->relatedListMapper->getAll() as $list)
+        {
+            $request = $list->getRequest();
+            $controller = $this->serviceContainer->get('debug.controller_resolver')->getController($request);
+            $controller[0]->setRequest($request);
+            $controller[0]->configure();
+            foreach ($list->getDataGridValues() as $value)
+            {
+                call_user_func_array(array($list->getAdmin()->getDataGrid(), 'setValue'), $value);
+            }
+
+            $response = call_user_func($controller);
+            $lists[] = $response->getContent();
+        }
+        return $lists;
+    }
+
+    protected function configureRelatedLists(RelatedListMapper $listMapper)
+    {
+    }
+
+    /**
      * {@inheritdoc}
      */
     protected function configureFormFields(FormMapper $form)
@@ -513,11 +557,12 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
      * @param string $class
      * @param string $baseControllerName
      */
-    public function __construct($code, $class, $baseControllerName)
+    public function __construct($code, $class, $baseControllerName, ContainerInterface $serviceContainer = null)
     {
         $this->code                 = $code;
         $this->class                = $class;
         $this->baseControllerName   = $baseControllerName;
+        $this->serviceContainer     = $serviceContainer;
     }
 
     /**
